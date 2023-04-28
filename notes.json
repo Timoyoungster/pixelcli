@@ -1,0 +1,39 @@
+[
+  {
+    "title": " Todo ",
+    "notes": [
+      [
+        "cursor movement",
+        "NONE"
+      ],
+      [
+        "colorization of current pixel",
+        "NONE"
+      ],
+      [
+        "datastructure to hold an image",
+        "NONE"
+      ],
+      [
+        "translate image to visible screen",
+        "NONE"
+      ],
+      [
+        "weird error with free when quitting",
+        "BUG"
+      ],
+      [
+        "image reading and exporting",
+        "FEATURE"
+      ]
+    ]
+  },
+  {
+    "title": " in Progress ",
+    "notes": []
+  },
+  {
+    "title": " Done ",
+    "notes": []
+  }
+]
