@@ -1,2 +1,2 @@
 # pixelcli
-pixelart cli drawing tool
+pixelart cli drawing tool with sdl2
