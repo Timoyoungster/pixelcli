@@ -21,17 +21,16 @@
       [
         "zooming",
         "FEATURE"
+      ],
+      [
+        "white makes cursor invisible",
+        "NONE"
       ]
     ]
   },
   {
     "title": " in Progress ",
-    "notes": [
-      [
-        "area selection with fill",
-        "FEATURE"
-      ]
-    ]
+    "notes": []
   },
   {
     "title": " Done ",
@@ -43,6 +42,10 @@
       [
         "colorization of current pixel",
         "NONE"
+      ],
+      [
+        "area selection with fill",
+        "FEATURE"
       ]
     ]
   }
