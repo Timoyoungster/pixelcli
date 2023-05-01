@@ -26,7 +26,12 @@
   },
   {
     "title": " in Progress ",
-    "notes": []
+    "notes": [
+      [
+        "area selection with fill",
+        "FEATURE"
+      ]
+    ]
   },
   {
     "title": " Done ",
