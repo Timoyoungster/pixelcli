@@ -26,18 +26,17 @@
   },
   {
     "title": " in Progress ",
-    "notes": [
-      [
-        "colorization of current pixel",
-        "NONE"
-      ]
-    ]
+    "notes": []
   },
   {
     "title": " Done ",
     "notes": [
       [
         "cursor movement",
+        "NONE"
+      ],
+      [
+        "colorization of current pixel",
         "NONE"
       ]
     ]
