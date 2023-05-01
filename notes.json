@@ -3,14 +3,6 @@
     "title": " Todo ",
     "notes": [
       [
-        "cursor movement",
-        "NONE"
-      ],
-      [
-        "colorization of current pixel",
-        "NONE"
-      ],
-      [
         "datastructure to hold an image",
         "NONE"
       ],
@@ -25,15 +17,29 @@
       [
         "image reading and exporting",
         "FEATURE"
+      ],
+      [
+        "zooming",
+        "FEATURE"
       ]
     ]
   },
   {
     "title": " in Progress ",
-    "notes": []
+    "notes": [
+      [
+        "colorization of current pixel",
+        "NONE"
+      ]
+    ]
   },
   {
     "title": " Done ",
-    "notes": []
+    "notes": [
+      [
+        "cursor movement",
+        "NONE"
+      ]
+    ]
   }
 ]
