@@ -3,16 +3,16 @@
     "title": " Todo ",
     "notes": [
       [
-        "white makes cursor invisible",
-        "BUG"
-      ],
-      [
         "datastructure to hold an image",
         "NONE"
       ],
       [
         "translate image to visible screen",
         "NONE"
+      ],
+      [
+        "white makes cursor invisible",
+        "BUG"
       ],
       [
         "weird error with free when quitting",
@@ -24,7 +24,7 @@
       ],
       [
         "zooming",
-        "FEATURE"
+        "WONTFIX"
       ]
     ]
   },
