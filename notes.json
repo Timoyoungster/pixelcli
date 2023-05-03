@@ -3,6 +3,10 @@
     "title": " Todo ",
     "notes": [
       [
+        "white makes cursor invisible",
+        "BUG"
+      ],
+      [
         "datastructure to hold an image",
         "NONE"
       ],
@@ -21,10 +25,6 @@
       [
         "zooming",
         "FEATURE"
-      ],
-      [
-        "white makes cursor invisible",
-        "NONE"
       ]
     ]
   },
