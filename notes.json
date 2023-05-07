@@ -3,10 +3,6 @@
     "title": " Todo ",
     "notes": [
       [
-        "selections really dont like the moving screen right now",
-        "BUG"
-      ],
-      [
         "white makes cursor invisible",
         "BUG"
       ],
@@ -22,7 +18,12 @@
   },
   {
     "title": " in Progress ",
-    "notes": []
+    "notes": [
+      [
+        "selections really dont like the moving screen right now\n\n(almost fixed; fill_selection and println aren't processing the offsets correct though)",
+        "BUG"
+      ]
+    ]
   },
   {
     "title": " Done ",
