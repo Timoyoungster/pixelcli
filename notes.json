@@ -3,8 +3,8 @@
     "title": " Todo ",
     "notes": [
       [
-        "translate image to visible screen",
-        "NONE"
+        "selections really dont like the moving screen right now",
+        "BUG"
       ],
       [
         "white makes cursor invisible",
@@ -41,6 +41,10 @@
       ],
       [
         "datastructure to hold an image",
+        "NONE"
+      ],
+      [
+        "translate image to visible screen",
         "NONE"
       ]
     ]
