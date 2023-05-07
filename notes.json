@@ -3,19 +3,11 @@
     "title": " Todo ",
     "notes": [
       [
-        "datastructure to hold an image",
-        "NONE"
-      ],
-      [
         "translate image to visible screen",
         "NONE"
       ],
       [
         "white makes cursor invisible",
-        "BUG"
-      ],
-      [
-        "weird error with free when quitting",
         "BUG"
       ],
       [
@@ -46,6 +38,10 @@
       [
         "area selection with fill",
         "FEATURE"
+      ],
+      [
+        "datastructure to hold an image",
+        "NONE"
       ]
     ]
   }
