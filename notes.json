@@ -5,14 +5,6 @@
       [
         "white makes cursor invisible",
         "BUG"
-      ],
-      [
-        "image reading and exporting",
-        "FEATURE"
-      ],
-      [
-        "zooming",
-        "WONTFIX"
       ]
     ]
   },
@@ -20,8 +12,8 @@
     "title": " in Progress ",
     "notes": [
       [
-        "selections really dont like the moving screen right now\n\n(almost fixed; fill_selection and println aren't processing the offsets correct though)",
-        "BUG"
+        "image reading and exporting",
+        "FEATURE"
       ]
     ]
   },
@@ -47,6 +39,14 @@
       [
         "translate image to visible screen",
         "NONE"
+      ],
+      [
+        "selections really dont like the moving screen right now\n\n(almost fixed; fill_selection and println aren't processing the offsets correct though)",
+        "BUG"
+      ],
+      [
+        "zooming\n\n(will be possible by just letting the terminal handle it; if a user wants the image smaller or bigger then he just has to decrease the terminal fontsize)",
+        "WONTFIX"
       ]
     ]
   }
