@@ -5,6 +5,14 @@
       [
         "white makes cursor invisible",
         "BUG"
+      ],
+      [
+        "add % and 0 command",
+        "NONE"
+      ],
+      [
+        "add b and w command",
+        "NONE"
       ]
     ]
   },
@@ -14,6 +22,10 @@
       [
         "image reading and exporting",
         "FEATURE"
+      ],
+      [
+        "add save command",
+        "NONE"
       ]
     ]
   },
