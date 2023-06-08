@@ -1,19 +1,32 @@
-#include <SDL2/SDL_stdinc.h>
-#include <asm-generic/ioctls.h>
-#include <ctype.h>
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <sys/param.h>
+#include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
+#include <setjmp.h>
+#include <png.h>
+#include <pngconf.h>
+#include <string.h>
 
 /*** defines ***/
 
 #define BLOCK '█'
 #define COLOR_INX_OFFSET 7
-#define BYTES_PER_CHAR 10
+#define RED_OFFSET 7
+#define GREEN_OFFSET 11
+#define BLUE_OFFSET 15
+#define BYTES_PER_CHAR 20
+#define ERROR -1
+#define SUCCESS 0
+#define SIZEOF_POINTER 8
+#define IMAGE_DEPTH 3
+#define ASCII_NUMBERS_START 48
+#define CONFIG_PATH_AMOUNT 4
 
 /*** data ***/
 
@@ -25,23 +38,42 @@ struct term_config {
 };
 
 struct term_config term;
-char *screen; // each character has 10 bytes for escape sequence and character
-              // at the end there are 3 bytes to reset everything
-int screen_bitc;
-char selected_color = '0';
+
 int x_cursor = 1;
 int y_cursor = 1;
 
+char *image;
+unsigned int image_bytec;
+unsigned int image_width;
+unsigned int image_height;
+int x_offset = 0;
+int y_offset = 0;
+
 int selected_row = -1;
 int selected_col = -1;
+
+int r_sel = 0;
+int g_sel = 0;
+int b_sel = 0;
+
+int color_palette[10][3] = {
+    {0x00, 0x00, 0x00}, // BLACK
+    {0x69, 0x69, 0x69}, // GRAY
+    {0xFF, 0xFF, 0xFF}, // WHITE 
+    {0xF0, 0x2F, 0x5F}, // RED
+    {0xFF, 0x7F, 0x00}, // ORANGE
+    {0xF9, 0xC2, 0x2E}, // YELLOW
+    {0x04, 0xE7, 0x37}, // GREEN
+    {0x00, 0xA1, 0xE4}, // BLUE
+    {0x94, 0x00, 0xD3}, // VIOLET
+    {0xFC, 0x46, 0xAA}, // PINK
+};
 
 char *error_msg = NULL;
 
 /*** terminal ***/
 
 void disable_raw_mode() {
-    free(screen);
-
     // clear screen
     write(STDOUT_FILENO, "\x1b[2J", 4);
     write(STDOUT_FILENO, "\x1b[H", 3);
@@ -113,31 +145,85 @@ int get_cursor_pos(int *row, int *col) {
         return -1;
     }
 
+    // convert to 0-based index
+    *row = *row - 1;
+    *col = *col - 1;
+
     return 0;
 }
 
-int init_screen() {
-    for (int i = 0; i < screen_bitc; i+=10) {
-        screen[i + 0] = '\x1b';
-        screen[i + 1] = '[';
-        screen[i + 2] = '4';
-        screen[i + 3] = '8';
-        screen[i + 4] = ';';
-        screen[i + 5] = '5';
-        screen[i + 6] = ';';
-        screen[i + 7] = '0';
-        screen[i + 8] = 'm';
-        screen[i + 9] = ' ';
+int init_image(int w, int h, png_bytepp rows) {
+    // init global image vars
+    // (2 * w because pixel has two chars in terminal)
+    image_bytec = (2 * w * h) * BYTES_PER_CHAR;
+    image = malloc(image_bytec);
+    image_width = 2 * w;
+    image_height = h;
+
+    char r0 = '0';
+    char r1 = '0';
+    char r2 = '0';
+    char g0 = '0';
+    char g1 = '0';
+    char g2 = '0';
+    char b0 = '0';
+    char b1 = '0';
+    char b2 = '0';
+
+    for (int i = 0; i < image_bytec; i+=BYTES_PER_CHAR) {
+        if (rows) {
+            // calculate image coordinates in png struct
+            int row = (int)(((i / BYTES_PER_CHAR) / 2) / w);
+            int col = (int)(((i / BYTES_PER_CHAR) / 2) % w) * IMAGE_DEPTH;
+
+            // extract rgb values
+            int red = rows[row][col];
+            int green = rows[row][col + 1];
+            int blue = rows[row][col + 2];
+
+            // put the correct chars into the variables
+            r0 = (int)(red / 100) + ASCII_NUMBERS_START;
+            r1 = (int)((red % 100) / 10) + ASCII_NUMBERS_START;
+            r2 = (int)(red % 10) + ASCII_NUMBERS_START;
+            g0 = (int)(green / 100) + ASCII_NUMBERS_START;
+            g1 = (int)((green % 100) / 10) + ASCII_NUMBERS_START;
+            g2 = (int)(green % 10) + ASCII_NUMBERS_START;
+            b0 = (int)(blue / 100) + ASCII_NUMBERS_START;
+            b1 = (int)((blue % 100) / 10) + ASCII_NUMBERS_START;
+            b2 = (int)(blue % 10) + ASCII_NUMBERS_START;
+        }
+
+        image[i + 0] = '\x1b';
+        image[i + 1] = '[';
+        image[i + 2] = '4';
+        image[i + 3] = '8';
+        image[i + 4] = ';';
+        image[i + 5] = '2';
+        image[i + 6] = ';';
+        image[i + 7] = r0;
+        image[i + 8] = r1;
+        image[i + 9] = r2;
+        image[i + 10] = ';';
+        image[i + 11] = g0;
+        image[i + 12] = g1;
+        image[i + 13] = g2;
+        image[i + 14] = ';';
+        image[i + 15] = b0;
+        image[i + 16] = b1;
+        image[i + 17] = b2;
+        image[i + 18] = 'm';
+        image[i + 19] = ' ';
     }
     return 0;
 }
 
-int init_terminal_state() {
+int set_terminal_size() {
     struct winsize ws;
     int result = 0;
 
     // get terminal size with ioctl
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || 
+            ws.ws_col == 0) {
         // fallback to escape sequences for querying terminal size
         // move cursor down and then to the end
         if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
@@ -152,62 +238,186 @@ int init_terminal_state() {
         term.rows = ws.ws_row;
     }
 
-    // init screen
-    screen_bitc = (term.cols * term.rows) * BYTES_PER_CHAR;
-    screen = malloc(screen_bitc);
-    init_screen();
-
     return result;
 }
 
+int init_terminal_state() {
+    enable_raw_mode();
+    return set_terminal_size();
+}
+
+static inline int ASCII_TO_NUM(int inx) { 
+    return 
+        (image[inx    ] - ASCII_NUMBERS_START) * 100 
+        + (image[inx + 1] - ASCII_NUMBERS_START) * 10 
+        + (image[inx + 2] - ASCII_NUMBERS_START); 
+}
+
+/// prints specified line to screen
+void println(int row, int col) {
+    // move cursor to beginning of line
+    write(STDOUT_FILENO, "\x1b[G", 3);
+    // clear line
+    write(STDOUT_FILENO, "\x1b[2K", 4);
+    // print screen to terminal
+    write(STDOUT_FILENO, 
+            &image[(row * image_width + col) * BYTES_PER_CHAR], 
+            MIN(term.cols, image_width - col) * BYTES_PER_CHAR);
+    // reset formatting
+    write(STDOUT_FILENO, "\x1b[0m", 4);
+}
+
+/// prints specified lines to screen
+void printlns(int from_row, int to_row, int col) {
+    int f = MIN(from_row, to_row);
+    int t = MAX(from_row, to_row);
+    int draw_start = f - y_offset;
+
+    // adjust starting row if it's offscreen
+    if (draw_start < 0) {
+        f = f + (draw_start * -1);
+        draw_start = 0;
+    }
+
+    // adjust end to be last row if t is offscreen
+    t = MIN(t, term.rows + y_offset);
+
+    // place cursor to beginning of selection
+    char *buf = malloc(10);
+    int len = sprintf(buf, "\x1b[%d;1H", draw_start + 1);
+    write(STDOUT_FILENO, buf, len);
+    free(buf);
+
+    for (int i = f; i <= t; i++) {
+        println(i, col);
+        // cursor in next line
+        write(STDOUT_FILENO, "\x1b[E", 3);
+    }
+}
+
+/// prints the whole screen based on the offsets
 void print_screen() {
-    int row;
-    int col;
+    // move cursor to beginning of screen
+    write(STDOUT_FILENO, "\x1b[H", 3);
+
+    for (int i = y_offset; 
+            i < MIN(term.rows + y_offset, image_height); i++) 
+    {
+        println(i, x_offset);
+        // cursor in next line
+        write(STDOUT_FILENO, "\x1b[E", 3);
+    }
+}
+
+/// returns the starting index of given coordinates in the image
+int get_inx(int row, int col) {
+    return (col + image_width * row) * BYTES_PER_CHAR;
+}
+
+static inline void set_pixel(int r, int g, int b, int base_offset)
+{
+    image[base_offset + RED_OFFSET] = (int)(r / 100) + ASCII_NUMBERS_START;
+    image[base_offset + RED_OFFSET + 1] = (int)((r % 100) / 10) + ASCII_NUMBERS_START;
+    image[base_offset + RED_OFFSET + 2] = (int)(r % 10) + ASCII_NUMBERS_START;
+    image[base_offset + GREEN_OFFSET] = (int)(g / 100) + ASCII_NUMBERS_START;
+    image[base_offset + GREEN_OFFSET + 1] = (int)((g % 100) / 10) + ASCII_NUMBERS_START;
+    image[base_offset + GREEN_OFFSET + 2] = (int)(g % 10) + ASCII_NUMBERS_START;
+    image[base_offset + BLUE_OFFSET] = (int)(b / 100) + ASCII_NUMBERS_START;
+    image[base_offset + BLUE_OFFSET + 1] = (int)((b % 100) / 10) + ASCII_NUMBERS_START;
+    image[base_offset + BLUE_OFFSET + 2] = (int)(b % 10) + ASCII_NUMBERS_START;
+}
+
+void pipette(int row, int col) {
+    int inx = get_inx(row, col);
+    r_sel = ASCII_TO_NUM(inx + RED_OFFSET);
+    g_sel = ASCII_TO_NUM(inx + GREEN_OFFSET);
+    b_sel = ASCII_TO_NUM(inx + BLUE_OFFSET);
+}
+
+/// fills the whole image with given color
+void fill_image(int r, int g, int b) {
+    for (int i = 0; i < image_bytec; i+= BYTES_PER_CHAR) {
+        set_pixel(r, g, b, i);
+    }
+}
+
+/// fills a pixel with the given color 
+/// and redraws the affected line
+///
+/// index shall be absolute to the image coordinates
+void fill_pixel(int row, int col, int r, int g, int b) {
+    // abort if not in image
+    if (row >= image_height || col >= image_width - 1) {
+        return;
+    }
+    int inx = get_inx(row, col);
+    set_pixel(r, g, b, inx);
+    set_pixel(r, g, b, inx + BYTES_PER_CHAR);
+
+    // save cursor position
+    int row_save;
+    int col_save;
     // get current cursor position
-    if (get_cursor_pos(&row, &col) == -1) {
+    if (get_cursor_pos(&row_save, &col_save) == -1) {
         die("get_cursor_pos");
         return;
     }
 
-    // move cursor to beginning
-    write(STDOUT_FILENO, "\x1b[H", 3);
-    // print screen to terminal
-    write(STDOUT_FILENO, screen, screen_bitc);
-    
+    println(row, x_offset);
+
     // reset cursor position
     char *buf = malloc(10);
-    int len = sprintf(buf, "\x1b[%d;%dH", row, col);
+    int len = sprintf(buf, "\x1b[%d;%dH", row_save + 1, col_save + 1);
     write(STDOUT_FILENO, buf, len);
+    free(buf);
 }
 
-int get_inx(int row, int col) {
-    return (col - 1 + term.cols * (row - 1)) * BYTES_PER_CHAR + 7;
-}
-
-void fill_screen(int color) {
-    for (int i = COLOR_INX_OFFSET; i < screen_bitc; i+= 10) {
-        screen[i] = color;
+/// fills a range of pixels with the given color 
+/// and redraws affected lines
+///
+/// index shall be absolute to the image coordinates
+void fill_selection(int from_r, int from_c, 
+        int to_r, int to_c,
+        int r, int g, int b) {
+    // abort if not in image
+    if (from_r >= image_height || from_c >= image_width - 1 ||
+        to_r >= image_height || to_c >= image_width - 1) {
+        return;
     }
-}
 
-void fill_pixel(int row, int col, int color) {
-    screen[get_inx(row, col)] = color;
-    screen[get_inx(row, col) + BYTES_PER_CHAR] = color;
-    print_screen();
-}
+    int start_col = MIN(from_c, to_c) * BYTES_PER_CHAR;
+    int end_col = (MAX(from_c, to_c) + 1) * BYTES_PER_CHAR;
+    int start_row = MIN(from_r, to_r) 
+        * image_width * BYTES_PER_CHAR;
+    int end_row = MAX(from_r, to_r) 
+        * image_width * BYTES_PER_CHAR;
 
-void fill_selection(int from_r, int from_c, int to_r, int to_c, int color) {
-    int start_col = MIN(from_c - 1, to_c - 1) * BYTES_PER_CHAR;
-    int end_col = (MAX(from_c - 1, to_c - 1) + 1) * BYTES_PER_CHAR;
-    int start_row = MIN(from_r - 1, to_r - 1) * term.cols * BYTES_PER_CHAR;
-    int end_row = MAX(from_r - 1, to_r - 1) * term.cols * BYTES_PER_CHAR;
-
-    for (int row = start_row; row <= end_row; row+=term.cols*BYTES_PER_CHAR) {
-        for (int col = start_col; col <= end_col; col+=BYTES_PER_CHAR) {
-            screen[row + col + 7] = color;
+    for (int row = start_row; row <= end_row; 
+         row+=image_width*BYTES_PER_CHAR) 
+    {
+        for (int col = start_col; col <= end_col; 
+             col+=BYTES_PER_CHAR) 
+        {
+            set_pixel(r, g, b, row + col);
         }
     }
-    print_screen();
+
+    // save cursor position
+    int row_save;
+    int col_save;
+    // get current cursor position
+    if (get_cursor_pos(&row_save, &col_save) == -1) {
+        die("get_cursor_pos");
+        return;
+    }
+
+    printlns(from_r, to_r, x_offset);
+
+    // reset cursor position
+    char *buf = malloc(10);
+    int len = sprintf(buf, "\x1b[%d;%dH", row_save + 1, col_save + 1);
+    write(STDOUT_FILENO, buf, len);
+    free(buf);
 }
 
 void clear_screen() {
@@ -217,6 +427,255 @@ void clear_screen() {
     write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
+int save_pipette_color(char c) {
+    if (c < ASCII_NUMBERS_START || c > ASCII_NUMBERS_START + 9) {
+        return ERROR;
+    }
+
+    color_palette[c - ASCII_NUMBERS_START][0] = r_sel;
+    color_palette[c - ASCII_NUMBERS_START][1] = g_sel;
+    color_palette[c - ASCII_NUMBERS_START][2] = b_sel;
+
+    return SUCCESS;
+}
+
+/// compares the two pixels at the given indexes
+///
+/// returns 1 if they are different, 0 if they are the same 
+/// and -1 if there was an error
+int cmp_pixel_color_by_index(int inx1, int inx2) {
+    if (!image) {
+        return -1;
+    }
+
+    if (   image[inx1 + RED_OFFSET]   == image[inx2 + RED_OFFSET]
+        && image[inx1 + GREEN_OFFSET] == image[inx2 + GREEN_OFFSET]
+        && image[inx1 + BLUE_OFFSET]  == image[inx2 + BLUE_OFFSET])
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/// jumps to the next color in the line where the cursor is
+/// if dir is 1 it will search to the right of the cursor
+/// if dir is -1 it will search to the left of the cursor
+/// after the cursor is moved it moves the offsets if it is
+/// now offscreen and redraws the screen
+void jmp_next_color(int cursor_row, int cursor_col, int dir) {
+    int diff; // specifies the maximum amount of pixels to jump
+    char command;
+    int index = get_inx(cursor_row, cursor_col);
+    int origin_pixel = index;
+    int move_by = -1;
+    int back_color_found = -1;
+
+    // direction specific setup
+    if (dir < 0) {
+        // return if in first column
+        if (cursor_col == 0) {
+            return;
+        }
+
+        diff = cursor_col;
+        command = 'D';
+
+        // check if cursor is at beginning of color region
+        // and if so change the color to the adjacent one
+        // so that it later won't stop because it sees a 
+        // different color right away
+        if (cmp_pixel_color_by_index(
+                    index, index - BYTES_PER_CHAR
+                ) == 1) 
+        {
+            origin_pixel = index - BYTES_PER_CHAR;
+        }
+    }
+    else {
+        // return if in last column
+        if (cursor_col == MIN(term.cols, image_width) - 2) { 
+            return; 
+        }
+
+        diff = MIN(term.cols, image_width) - cursor_col - 2;
+        diff -= diff % 2; // round down to next even number
+        command = 'C';
+    }
+
+    // search for color change in the given direction
+    for (int i = 0; i < diff; i++) {
+        index += dir * BYTES_PER_CHAR;
+        if (cmp_pixel_color_by_index(origin_pixel, index) == 1) {
+            move_by = i + ((dir > 0) ? 1 : 0);
+            break;
+        }
+    }
+
+    // if no color change was found move to beginning/end
+    if (move_by < 0) {
+        move_by = diff;
+    }
+
+    // round down to next even number so that there cannot be a
+    // move by half a pixel
+    move_by -= move_by % 2;
+
+    // move by calculated amount in specified direction (command var)
+    char *buf = malloc(10);
+    int len = sprintf(buf, "\x1b[%d%c", move_by, command);
+    write(STDOUT_FILENO, buf, len);
+    free(buf);
+}
+
+int load_image(char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return ERROR;
+    }
+
+    int read_bytes_amount = 8;
+    unsigned char *header = malloc(sizeof(char) * read_bytes_amount);
+
+    if (fread(header, 1, read_bytes_amount, f) != read_bytes_amount) 
+    {
+        fclose(f);
+        return ERROR;
+    }
+
+    int is_png = !png_sig_cmp(header, 0, read_bytes_amount);
+    if (!is_png) {
+        fclose(f);
+        return ERROR;
+    }
+
+    rewind(f);
+    
+    png_structp png_ptr = png_create_read_struct(
+            PNG_LIBPNG_VER_STRING, 
+            NULL,
+            NULL,
+            NULL
+        );
+
+    if (!png_ptr) {
+        fclose(f);
+        return ERROR;
+    }
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    
+    if (!info_ptr) {
+        png_destroy_read_struct(&png_ptr, NULL, NULL);
+        fclose(f);
+        return ERROR;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(f);
+        return ERROR;
+    }
+
+    png_init_io(png_ptr, f);
+
+    png_read_png(png_ptr, info_ptr, 
+            PNG_TRANSFORM_SCALE_16 | 
+            PNG_TRANSFORM_STRIP_ALPHA | 
+            PNG_TRANSFORM_GRAY_TO_RGB, 
+            NULL
+        );
+
+    unsigned int w;
+    unsigned int h;
+
+    png_get_IHDR(png_ptr, info_ptr, &w, &h, 
+            NULL, NULL, NULL, NULL, NULL);
+
+    png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
+    init_image(w, h, row_pointers);
+
+    fclose(f);
+    return SUCCESS;
+}
+
+png_bytepp get_preprocessed_image() {
+    png_bytepp rows = malloc(SIZEOF_POINTER * image_height);
+
+    for (int r = 0; r < image_height; r++) {
+        rows[r] = malloc(
+            sizeof(png_byte) * (int)(image_width / 2) * IMAGE_DEPTH
+        );
+
+        for (int c = 0; c < (int)(image_width / 2); c++) {
+            int inx = get_inx(r, 2 * c);
+            rows[r][c * IMAGE_DEPTH] = ASCII_TO_NUM(inx + RED_OFFSET);
+            rows[r][c * IMAGE_DEPTH + 1] = ASCII_TO_NUM(inx + GREEN_OFFSET);
+            rows[r][c * IMAGE_DEPTH + 2] = ASCII_TO_NUM(inx + BLUE_OFFSET);
+        }
+    }
+
+    return rows;
+}
+
+void user_error_fn() {
+    die("png");
+}
+
+void user_warn_fn() { }
+
+int save_image() {
+    png_voidp *user_error_ptr;
+    
+    png_structp png_ptr = png_create_write_struct(
+            PNG_LIBPNG_VER_STRING, 
+            (png_voidp)user_error_ptr, 
+            &user_error_fn, 
+            &user_warn_fn
+        );
+
+    if (!png_ptr) {
+        return ERROR;
+    }
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+        png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+        return ERROR;
+    }
+
+    FILE *f = fopen("./out.png", "wb");
+
+    if (!f) {
+        return ERROR;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(f);
+        return ERROR;
+    }
+
+    png_init_io(png_ptr, f);
+
+    // NOTE: could add a status callback function here
+    
+    png_set_IHDR(png_ptr, info_ptr, 
+            (int) (image_width / 2), image_height, 
+            8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, 
+            PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT
+        );
+
+    // save image to file
+    png_bytepp rows = get_preprocessed_image();
+    png_set_rows(png_ptr, info_ptr, rows);
+    png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+    // free everything
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(f);
+    return SUCCESS;
+}
 
 char poll_input() {
     int nread;
@@ -229,13 +688,19 @@ char poll_input() {
     return c;
 }
 
+void log_image() {
+    FILE *f = fopen("log.txt", "w");
+    fprintf(f, "%s", image);
+    die("\nlog done");
+}
+
 int handle_input(char c) {
     int row;
     int col;
     // get current cursor position
     if (get_cursor_pos(&row, &col) == -1) {
         die("get_cursor_pos");
-        return -1;
+        return ERROR;
     }
 
     switch (c) {
@@ -255,28 +720,84 @@ int handle_input(char c) {
                                                 // to single last col
             write(STDIN_FILENO, "\x1b[2C", 4);
             break;
+        case 'H': // offset left
+            if (x_offset > 1) {
+                x_offset -= 2;
+
+                // save cursor pos
+                write(STDOUT_FILENO, "\x1b[s", 3);
+
+                print_screen();
+
+                // restore cursor pos
+                write(STDOUT_FILENO, "\x1b[u", 3);
+            }
+            break;
+        case 'J': // offset down
+            if (image_height - y_offset > term.rows) {
+                y_offset += 1;
+
+                // save cursor pos
+                write(STDOUT_FILENO, "\x1b[s", 3);
+
+                print_screen();
+
+                // restore cursor pos
+                write(STDOUT_FILENO, "\x1b[u", 3);
+            }
+            break;
+        case 'K': // offset up
+            if (y_offset > 0) {
+                y_offset -= 1;
+
+                // save cursor pos
+                write(STDOUT_FILENO, "\x1b[s", 3);
+
+                print_screen();
+
+                // restore cursor pos
+                write(STDOUT_FILENO, "\x1b[u", 3);
+            }
+            break;
+        case 'L': // offset right
+            if (image_width - x_offset > term.cols + 1) {
+                x_offset += 2;
+
+                // save cursor pos
+                write(STDOUT_FILENO, "\x1b[s", 3);
+
+                print_screen();
+
+                // restore cursor pos
+                write(STDOUT_FILENO, "\x1b[u", 3);
+            }
+            break;
         case 'g': // top
             write(STDOUT_FILENO, "\x1b[H", 3);
             break;
         case 'f':
             if (selected_row != -1 && selected_col != -1) {
                 fill_selection(selected_row, selected_col, 
-                        row, col, selected_color);
+                    row + y_offset, col + x_offset, 
+                    r_sel, g_sel, b_sel
+                );
                 selected_row = -1;
                 selected_col = -1;
                 break;
             }
-            fill_pixel(row, col, selected_color);
+            fill_pixel(row + y_offset, col + x_offset, 
+                    r_sel, g_sel, b_sel
+                );
             break;
         case 'd':
             if (selected_row != -1 && selected_col != -1) {
                 fill_selection(selected_row, selected_col, 
-                        row, col, '0');
+                    row + y_offset, col + x_offset, 0, 0, 0);
                 selected_row = -1;
                 selected_col = -1;
                 break;
             }
-            fill_pixel(row, col, '0');
+            fill_pixel(row + y_offset, col + x_offset, 0, 0, 0);
             break;
         case 'v':
             if (selected_row != -1 && selected_col != -1) {
@@ -284,43 +805,139 @@ int handle_input(char c) {
                 selected_col = -1;
                 break;
             }
-            selected_row = row;
-            selected_col = col;
+            selected_row = row + y_offset;
+            selected_col = col + x_offset;
+            break;
+        case 'w':
+            jmp_next_color(row, col, 1);
+            break;
+        case 'b':
+            jmp_next_color(row, col, -1);
             break;
         case '0':
-            selected_color = '0';
+            r_sel = color_palette[0][0];
+            g_sel = color_palette[0][1];
+            b_sel = color_palette[0][2];
             break;
         case '1':
-            selected_color = '1';
+            r_sel = color_palette[1][0];
+            g_sel = color_palette[1][1];
+            b_sel = color_palette[1][2];
             break;
         case '2':
-            selected_color = '2';
+            r_sel = color_palette[2][0];
+            g_sel = color_palette[2][1];
+            b_sel = color_palette[2][2];
             break;
         case '3':
-            selected_color = '3';
+            r_sel = color_palette[3][0];
+            g_sel = color_palette[3][1];
+            b_sel = color_palette[3][2];
             break;
         case '4':
-            selected_color = '4';
+            r_sel = color_palette[4][0];
+            g_sel = color_palette[4][1];
+            b_sel = color_palette[4][2];
             break;
         case '5':
-            selected_color = '5';
+            r_sel = color_palette[5][0];
+            g_sel = color_palette[5][1];
+            b_sel = color_palette[5][2];
             break;
         case '6':
-            selected_color = '6';
+            r_sel = color_palette[6][0];
+            g_sel = color_palette[6][1];
+            b_sel = color_palette[6][2];
             break;
         case '7':
-            selected_color = '7';
+            r_sel = color_palette[7][0];
+            g_sel = color_palette[7][1];
+            b_sel = color_palette[7][2];
             break;
         case '8':
-            selected_color = '8';
+            r_sel = color_palette[8][0];
+            g_sel = color_palette[8][1];
+            b_sel = color_palette[8][2];
             break;
         case '9':
-            selected_color = '9';
+            r_sel = color_palette[9][0];
+            g_sel = color_palette[9][1];
+            b_sel = color_palette[9][2];
+            break;
+        case 'p':
+            if (save_image() == ERROR) {
+                printf("no fallback for saving!");
+                // TODO: save image fallback
+                // TODO: show error msg and quit
+            }
+            break;
+        case 'z':
+            log_image();
+            break;
+        case 'r':
+            // BUG: doesn't do anything for some reason
+            set_terminal_size(); // recalc terminal size
+            break;
+        case 'i':
+            pipette(row + y_offset, col + x_offset);
+            break;
+        case 'I':
+            pipette(row + y_offset, col + x_offset);
+            save_pipette_color(poll_input());
             break;
         default:
             break;
     }
-    return 0;
+    return SUCCESS;
+}
+
+/// try to load config from these locations:
+/// - ~/.config/pixelcli/config
+/// - ~/.config/pixelcli.config
+/// - ~/.pixelcli/config
+/// - ~/.pixelcli.config
+int load_config() {
+    char *home = getenv("HOME");
+    char *config[CONFIG_PATH_AMOUNT] = { // WARN: longest path first
+        "/.config/pixelcli/config",
+        "/.config/pixelcli.config",
+        "/.pixelcli/config",
+        "/.pixelcli.config"
+    };
+    char *path = malloc(strlen(home) + strlen(config[0]) + 1);
+    strcpy(path, home);
+    strcat(path, config[0]);
+
+    FILE *f = fopen(path, "r");
+    int i = 1;
+    while (f == NULL) {
+        strcpy(path, home);
+        strcat(path, config[i]);
+        f = fopen(path, "r");
+        i++;
+        if (i >= CONFIG_PATH_AMOUNT) { break; }
+    }
+    if (f == NULL) {
+        return ERROR;
+    }
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    while ((read = getline(&line, &len, f)) != EOF) {
+        int inx;
+        int r;
+        int g;
+        int b;
+        if (sscanf(line, "%d = %x;%x;%x", &inx, &r, &g, &b) != EOF) {
+            color_palette[inx][0] = r;
+            color_palette[inx][1] = g;
+            color_palette[inx][2] = b;
+        }
+    }
+
+    free(line);
+    return SUCCESS;
 }
 
 /*** main ***/
@@ -329,21 +946,48 @@ int main(int argc, char *argv[])
 {
     if (argc > 2) {
         printf("Usage: pixelcli [filepath]");
-        return 1;
+        return ERROR;
     }
     if (argc == 2) {
-        // TODO: load image
-        return 0;
+        if (load_image(argv[1]) == ERROR) {
+            printf("ERROR: Couldn't load the image!");
+            return ERROR;
+        }
     }
     else {
-        // TODO: ask for image dimensions to create
-        // create image
+        int width;
+        int height;
+        printf("How big should the image be?\n");
+        printf("width = ");
+        scanf("%d", &width);
+        printf("height = ");
+        scanf("%d", &height);
+        printf("Creating image with dimensions %d:%d ...\n", width, height);
+        if (height <= 0 || width <= 0) {
+            fprintf(stderr, 
+                    "Cannot create image with dimensions %d x %d!", 
+                    width, height
+            );
+            return ERROR;
+        }
+
+        // init image
+        init_image(width, height, NULL);
     }
 
-    enable_raw_mode();
+    int cfg_success = load_config();
+    if (cfg_success == ERROR) {
+        fprintf(stderr, "Couldn't load the config file!\
+                \nContinuing with the defaults...\n");
+        fprintf(stderr, "Errno: %d", errno);
+    }
+
     init_terminal_state();
     clear_screen();
     print_screen();
+
+    // move cursor to beginning of screen
+    write(STDOUT_FILENO, "\x1b[H", 3);
 
     int exit = 0;
     while (exit == 0) {
@@ -354,5 +998,5 @@ int main(int argc, char *argv[])
         exit = handle_input(c);
     }
 
-    return 0;
+    return SUCCESS;
 }

@@ -3,15 +3,19 @@
     "title": " Todo ",
     "notes": [
       [
-        "white makes cursor invisible",
-        "BUG"
+        "maybe make all commands configurable\n\nidea: const char vars which save the character",
+        "FEATURE"
       ],
       [
-        "add % and 0 command",
+        "add % and 0 command\n\nproblem with 0 is that that should be setting the color black",
         "NONE"
       ],
       [
-        "add b and w command",
+        "write manpage",
+        "NONE"
+      ],
+      [
+        "zooming needs to recalc the image bounds",
         "NONE"
       ]
     ]
@@ -20,11 +24,7 @@
     "title": " in Progress ",
     "notes": [
       [
-        "image reading and exporting",
-        "FEATURE"
-      ],
-      [
-        "add save command",
+        "allow transparency (transparency color)",
         "NONE"
       ]
     ]
@@ -57,8 +57,44 @@
         "BUG"
       ],
       [
+        "add b and w command",
+        "NONE"
+      ],
+      [
+        "add save command",
+        "NONE"
+      ],
+      [
         "zooming\n\n(will be possible by just letting the terminal handle it; if a user wants the image smaller or bigger then he just has to decrease the terminal fontsize)",
         "WONTFIX"
+      ],
+      [
+        "change colors to rgb",
+        "NONE"
+      ],
+      [
+        "image reading\n(ready for testing)",
+        "FEATURE"
+      ],
+      [
+        "make color palette settable",
+        "NONE"
+      ],
+      [
+        "fopen doesn't find config file even though it definitely exists in the given location\n\nmaybe there is something wrong with giving it a direct string for a path?\n\nSOLUTION: fopen can't resolve relative paths to the ~ did not work. getenv(\"HOME\") and a bunch of string concatenation did the trick.",
+        "BUG"
+      ],
+      [
+        "image export",
+        "FEATURE"
+      ],
+      [
+        "pipette with i\nlowercase => no save\nuppercase => save to palette (number needs to be inputted right after the I)",
+        "FEATURE"
+      ],
+      [
+        "w/b are broken",
+        "BUG"
       ]
     ]
   }
