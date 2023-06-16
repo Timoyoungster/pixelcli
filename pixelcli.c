@@ -24,9 +24,10 @@
 #define ERROR -1
 #define SUCCESS 0
 #define SIZEOF_POINTER 8
-#define IMAGE_DEPTH 3
+#define IMAGE_DEPTH 4
 #define ASCII_NUMBERS_START 48
 #define CONFIG_PATH_AMOUNT 4
+#define COMMANDC 30
 
 /*** data ***/
 
@@ -67,6 +68,41 @@ int color_palette[10][3] = {
     {0x00, 0xA1, 0xE4}, // BLUE
     {0x94, 0x00, 0xD3}, // VIOLET
     {0xFC, 0x46, 0xAA}, // PINK
+};
+
+int transparency_color[3] = {0x00, 0x0A, 0x12};
+
+char *commands[COMMANDC][2] = {
+    {"quit", "q"},
+    {"move_left", "h"},
+    {"move_down", "j"},
+    {"move_up", "k"},
+    {"move_right", "l"},
+    {"offset_left", "H"},
+    {"offset_down", "J"},
+    {"offset_up", "K"},
+    {"offset_right", "L"},
+    {"move_top", "g"},
+    {"move_bottom", "G"},
+    {"fill", "f"},
+    {"delete", "d"},
+    {"select", "v"},
+    {"jump_forward", "w"},
+    {"jump_backward", "b"},
+    {"color_0", "0"},
+    {"color_1", "1"},
+    {"color_2", "2"},
+    {"color_3", "3"},
+    {"color_4", "4"},
+    {"color_5", "5"},
+    {"color_6", "6"},
+    {"color_7", "7"},
+    {"color_8", "8"},
+    {"color_9", "9"},
+    {"save", "s"},
+    {"reload", "r"},
+    {"pipette", "i"},
+    {"pipette_save", "I"}
 };
 
 char *error_msg = NULL;
@@ -152,7 +188,15 @@ int get_cursor_pos(int *row, int *col) {
     return 0;
 }
 
-int init_image(int w, int h, png_bytepp rows) {
+/// initializes the image array
+///
+/// if rows are given those pixels will be loaded
+/// (color_type is needed to load correctly!
+///  if rows are given this function will panic and exit)
+/// 
+/// if no rows are given a blank image will be created
+/// (color_type will be ignored)
+int init_image(int w, int h, png_bytepp rows, int color_type) {
     // init global image vars
     // (2 * w because pixel has two chars in terminal)
     image_bytec = (2 * w * h) * BYTES_PER_CHAR;
@@ -160,15 +204,28 @@ int init_image(int w, int h, png_bytepp rows) {
     image_width = 2 * w;
     image_height = h;
 
-    char r0 = '0';
-    char r1 = '0';
-    char r2 = '0';
-    char g0 = '0';
-    char g1 = '0';
-    char g2 = '0';
-    char b0 = '0';
-    char b1 = '0';
-    char b2 = '0';
+    char r0 = (int)(transparency_color[0] / 100) + ASCII_NUMBERS_START;
+    char r1 = (int)((transparency_color[0] % 100) / 10) + ASCII_NUMBERS_START;
+    char r2 = (int)(transparency_color[0] % 10) + ASCII_NUMBERS_START;
+    char g0 = (int)(transparency_color[1] / 100) + ASCII_NUMBERS_START;
+    char g1 = (int)((transparency_color[1] % 100) / 10) + ASCII_NUMBERS_START;
+    char g2 = (int)(transparency_color[1] % 10) + ASCII_NUMBERS_START;
+    char b0 = (int)(transparency_color[2] / 100) + ASCII_NUMBERS_START;
+    char b1 = (int)((transparency_color[2] % 100) / 10) + ASCII_NUMBERS_START;
+    char b2 = (int)(transparency_color[2] % 10) + ASCII_NUMBERS_START;
+
+    if (rows && !color_type) {
+        die("color_type is needed");
+    }
+    
+    int create_alpha = 0;
+    if (color_type == PNG_COLOR_TYPE_RGBA
+        || color_type == PNG_COLOR_TYPE_GA
+        || color_type == PNG_COLOR_TYPE_RGB_ALPHA
+        || color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+    {
+        create_alpha = 1;
+    }
 
     for (int i = 0; i < image_bytec; i+=BYTES_PER_CHAR) {
         if (rows) {
@@ -180,6 +237,14 @@ int init_image(int w, int h, png_bytepp rows) {
             int red = rows[row][col];
             int green = rows[row][col + 1];
             int blue = rows[row][col + 2];
+
+            // replace pixel color if it should 
+            // be totally transparent
+            if (create_alpha == 1 && rows[row][col + 3] == 0) {
+                red = transparency_color[0];
+                green = transparency_color[1];
+                blue = transparency_color[2];
+            }
 
             // put the correct chars into the variables
             r0 = (int)(red / 100) + ASCII_NUMBERS_START;
@@ -581,19 +646,19 @@ int load_image(char *path) {
 
     png_read_png(png_ptr, info_ptr, 
             PNG_TRANSFORM_SCALE_16 | 
-            PNG_TRANSFORM_STRIP_ALPHA | 
             PNG_TRANSFORM_GRAY_TO_RGB, 
             NULL
         );
 
     unsigned int w;
     unsigned int h;
+    int color_type;
 
     png_get_IHDR(png_ptr, info_ptr, &w, &h, 
-            NULL, NULL, NULL, NULL, NULL);
+            NULL, &color_type, NULL, NULL, NULL);
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
-    init_image(w, h, row_pointers);
+    init_image(w, h, row_pointers, color_type);
 
     fclose(f);
     return SUCCESS;
@@ -612,6 +677,11 @@ png_bytepp get_preprocessed_image() {
             rows[r][c * IMAGE_DEPTH] = ASCII_TO_NUM(inx + RED_OFFSET);
             rows[r][c * IMAGE_DEPTH + 1] = ASCII_TO_NUM(inx + GREEN_OFFSET);
             rows[r][c * IMAGE_DEPTH + 2] = ASCII_TO_NUM(inx + BLUE_OFFSET);
+            rows[r][c * IMAGE_DEPTH + 3] = (
+                rows[r][c * IMAGE_DEPTH] == transparency_color[0] &&
+                rows[r][c * IMAGE_DEPTH + 1] == transparency_color[1] &&
+                rows[r][c * IMAGE_DEPTH + 2] == transparency_color[2]
+            ) ? 0 : 255;
         }
     }
 
@@ -658,14 +728,12 @@ int save_image() {
 
     png_init_io(png_ptr, f);
 
-    // NOTE: could add a status callback function here
-    
     png_set_IHDR(png_ptr, info_ptr, 
             (int) (image_width / 2), image_height, 
-            8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, 
+            8, PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE, 
             PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT
         );
-
+    
     // save image to file
     png_bytepp rows = get_preprocessed_image();
     png_set_rows(png_ptr, info_ptr, rows);
@@ -694,6 +762,15 @@ void log_image() {
     die("\nlog done");
 }
 
+int get_command_inx(char c) {
+    for (int i = 0; i < COMMANDC; i++) {
+        if (commands[i][1][0] == c) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int handle_input(char c) {
     int row;
     int col;
@@ -703,24 +780,26 @@ int handle_input(char c) {
         return ERROR;
     }
 
-    switch (c) {
-        case 'q':
+    int inx = get_command_inx(c);
+
+    switch (inx) {
+        case 0: // quit
             return 1;
-        case 'h': // left
+        case 1: // move_left
             write(STDIN_FILENO, "\x1b[2D", 4);
             break;
-        case 'j': // down
+        case 2: // move_down
             write(STDIN_FILENO, "\x1b[B", 3);
             break;
-        case 'k': // up
+        case 3: // move_up
             write(STDIN_FILENO, "\x1b[A", 3);
             break;
-        case 'l': // right
+        case 4: // move_right
             if (col > term.cols - 3) { break; } // don't allow move 
                                                 // to single last col
             write(STDIN_FILENO, "\x1b[2C", 4);
             break;
-        case 'H': // offset left
+        case 5: // offset_left
             if (x_offset > 1) {
                 x_offset -= 2;
 
@@ -733,7 +812,7 @@ int handle_input(char c) {
                 write(STDOUT_FILENO, "\x1b[u", 3);
             }
             break;
-        case 'J': // offset down
+        case 6: // offset_down
             if (image_height - y_offset > term.rows) {
                 y_offset += 1;
 
@@ -746,7 +825,7 @@ int handle_input(char c) {
                 write(STDOUT_FILENO, "\x1b[u", 3);
             }
             break;
-        case 'K': // offset up
+        case 7: // offset_up
             if (y_offset > 0) {
                 y_offset -= 1;
 
@@ -759,7 +838,7 @@ int handle_input(char c) {
                 write(STDOUT_FILENO, "\x1b[u", 3);
             }
             break;
-        case 'L': // offset right
+        case 8: // offset_right
             if (image_width - x_offset > term.cols + 1) {
                 x_offset += 2;
 
@@ -772,10 +851,13 @@ int handle_input(char c) {
                 write(STDOUT_FILENO, "\x1b[u", 3);
             }
             break;
-        case 'g': // top
+        case 9: // move_top
             write(STDOUT_FILENO, "\x1b[H", 3);
             break;
-        case 'f':
+        case 10: // move_bottom
+            write(STDOUT_FILENO, "\x1b[999B", 6);
+            break;
+        case 11: // fill
             if (selected_row != -1 && selected_col != -1) {
                 fill_selection(selected_row, selected_col, 
                     row + y_offset, col + x_offset, 
@@ -789,17 +871,23 @@ int handle_input(char c) {
                     r_sel, g_sel, b_sel
                 );
             break;
-        case 'd':
+        case 12: // delete
             if (selected_row != -1 && selected_col != -1) {
                 fill_selection(selected_row, selected_col, 
-                    row + y_offset, col + x_offset, 0, 0, 0);
+                    row + y_offset, col + x_offset, 
+                    transparency_color[0], 
+                    transparency_color[1], 
+                    transparency_color[2]);
                 selected_row = -1;
                 selected_col = -1;
                 break;
             }
-            fill_pixel(row + y_offset, col + x_offset, 0, 0, 0);
+            fill_pixel(row + y_offset, col + x_offset, 
+                transparency_color[0], 
+                transparency_color[1], 
+                transparency_color[2]);
             break;
-        case 'v':
+        case 13: // select
             if (selected_row != -1 && selected_col != -1) {
                 selected_row = -1;
                 selected_col = -1;
@@ -808,80 +896,77 @@ int handle_input(char c) {
             selected_row = row + y_offset;
             selected_col = col + x_offset;
             break;
-        case 'w':
+        case 14: // jump_forward
             jmp_next_color(row, col, 1);
             break;
-        case 'b':
+        case 15: // jump_backward
             jmp_next_color(row, col, -1);
             break;
-        case '0':
+        case 16: // color 0
             r_sel = color_palette[0][0];
             g_sel = color_palette[0][1];
             b_sel = color_palette[0][2];
             break;
-        case '1':
+        case 17: // color 1
             r_sel = color_palette[1][0];
             g_sel = color_palette[1][1];
             b_sel = color_palette[1][2];
             break;
-        case '2':
+        case 18: // color 2
             r_sel = color_palette[2][0];
             g_sel = color_palette[2][1];
             b_sel = color_palette[2][2];
             break;
-        case '3':
+        case 19: // color 3
             r_sel = color_palette[3][0];
             g_sel = color_palette[3][1];
             b_sel = color_palette[3][2];
             break;
-        case '4':
+        case 20: // color 4
             r_sel = color_palette[4][0];
             g_sel = color_palette[4][1];
             b_sel = color_palette[4][2];
             break;
-        case '5':
+        case 21: // color 5
             r_sel = color_palette[5][0];
             g_sel = color_palette[5][1];
             b_sel = color_palette[5][2];
             break;
-        case '6':
+        case 22: // color 6
             r_sel = color_palette[6][0];
             g_sel = color_palette[6][1];
             b_sel = color_palette[6][2];
             break;
-        case '7':
+        case 23: // color 7
             r_sel = color_palette[7][0];
             g_sel = color_palette[7][1];
             b_sel = color_palette[7][2];
             break;
-        case '8':
+        case 24: // color 8
             r_sel = color_palette[8][0];
             g_sel = color_palette[8][1];
             b_sel = color_palette[8][2];
             break;
-        case '9':
+        case 25: // color 9
             r_sel = color_palette[9][0];
             g_sel = color_palette[9][1];
             b_sel = color_palette[9][2];
             break;
-        case 'p':
+        case 26: // save
             if (save_image() == ERROR) {
                 printf("no fallback for saving!");
                 // TODO: save image fallback
                 // TODO: show error msg and quit
             }
             break;
-        case 'z':
-            log_image();
-            break;
-        case 'r':
+        case 27: // reload
             // BUG: doesn't do anything for some reason
             set_terminal_size(); // recalc terminal size
             break;
-        case 'i':
+        case 28: // pipette
             pipette(row + y_offset, col + x_offset);
             break;
-        case 'I':
+        case 29: // pipette_save
             pipette(row + y_offset, col + x_offset);
             save_pipette_color(poll_input());
             break;
@@ -889,6 +974,61 @@ int handle_input(char c) {
             break;
     }
     return SUCCESS;
+}
+
+void rebind_command(char *command, char c) {
+    for (int i = 0; i < COMMANDC; i++) {
+        if (strcmp(command, commands[i][0]) != 0) {
+            continue;
+        }
+
+        char *key = malloc(2);
+        key[0] = c;
+        key[1] = '\0';
+        commands[i][1] = key;
+
+        return;
+    }
+}
+
+void process_config_line(char *line) {
+    int inx;
+    int r;
+    int g;
+    int b;
+    
+    int is_color_setting = sscanf(line, "color_%d = %x;%x;%x", 
+            &inx, &r, &g, &b);
+    int no_result = 0;
+
+    if (is_color_setting != EOF && is_color_setting != no_result) {
+        color_palette[inx][0] = r;
+        color_palette[inx][1] = g;
+        color_palette[inx][2] = b;
+        return;
+    }
+
+    int is_transparency_color_setting = sscanf(
+            line, "transparency_color = %x;%x;%x", &r, &g, &b
+        );
+
+    if (is_transparency_color_setting != EOF
+        && is_transparency_color_setting != no_result)
+    {
+        transparency_color[0] = r;
+        transparency_color[1] = g;
+        transparency_color[2] = b;
+        return;
+    }
+
+    char command[20];
+    char c;
+    int is_command_rebind = sscanf(line, "bind %s %c", command, &c);
+
+    if (is_command_rebind != EOF && is_command_rebind != no_result) {
+        rebind_command(command, c);
+        return;
+    }
 }
 
 /// try to load config from these locations:
@@ -925,14 +1065,8 @@ int load_config() {
     ssize_t read;
 
     while ((read = getline(&line, &len, f)) != EOF) {
-        int inx;
-        int r;
-        int g;
-        int b;
-        if (sscanf(line, "%d = %x;%x;%x", &inx, &r, &g, &b) != EOF) {
-            color_palette[inx][0] = r;
-            color_palette[inx][1] = g;
-            color_palette[inx][2] = b;
+        if (read > 2 && line[0] != '#') {
+            process_config_line(line);
         }
     }
 
@@ -972,7 +1106,7 @@ int main(int argc, char *argv[])
         }
 
         // init image
-        init_image(width, height, NULL);
+        init_image(width, height, NULL, -1);
     }
 
     int cfg_success = load_config();

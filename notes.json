@@ -3,11 +3,7 @@
     "title": " Todo ",
     "notes": [
       [
-        "maybe make all commands configurable\n\nidea: const char vars which save the character",
-        "FEATURE"
-      ],
-      [
-        "add % and 0 command\n\nproblem with 0 is that that should be setting the color black",
+        "fix todos in code",
         "NONE"
       ],
       [
@@ -22,12 +18,7 @@
   },
   {
     "title": " in Progress ",
-    "notes": [
-      [
-        "allow transparency (transparency color)",
-        "NONE"
-      ]
-    ]
+    "notes": []
   },
   {
     "title": " Done ",
@@ -95,6 +86,14 @@
       [
         "w/b are broken",
         "BUG"
+      ],
+      [
+        "allow transparency (transparency color)",
+        "NONE"
+      ],
+      [
+        "maybe make all commands configurable\n\nidea: const char vars which save the character",
+        "FEATURE"
       ]
     ]
   }
