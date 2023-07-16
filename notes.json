@@ -7,6 +7,10 @@
         "NONE"
       ],
       [
+        “change the config struct to be more space effective (char[])”,
+        “NONE”
+      ],
+      [
         "write manpage",
         "NONE"
       ],
