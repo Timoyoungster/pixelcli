@@ -313,7 +313,7 @@ int init_terminal_state() {
 
 static inline int ASCII_TO_NUM(int inx) { 
   return 
-    (image[inx  ] - ASCII_NUMBERS_START) * 100 
+    (  image[inx  ] - ASCII_NUMBERS_START) * 100 
     + (image[inx + 1] - ASCII_NUMBERS_START) * 10 
     + (image[inx + 2] - ASCII_NUMBERS_START); 
 }
@@ -594,7 +594,19 @@ void jmp_next_color(int cursor_row, int cursor_col, int dir) {
   free(buf);
 }
 
+int load_failsave(char *path) {
+  FILE *f = fopen(path, "rb");
+  if (!f) {
+    return ERROR;
+  }
+  
+  image_width = atoi(readline(f), 10);
+  image_height = 0;
+  // TODO: create png_bytepp for init_image
+}
+
 int load_image(char *path) {
+  // TODO: if endswith pcli_failsave load_failsave
   FILE *f = fopen(path, "rb");
   if (!f) {
     return ERROR;
@@ -743,6 +755,56 @@ int save_image() {
   // free everything
   png_destroy_write_struct(&png_ptr, &info_ptr);
   fclose(f);
+  return SUCCESS;
+}
+
+int save_image_fallback() {
+  char *img = malloc(3 * IMAGE_DEPTH * image_width * image_height + 1);
+  int insert_point = 0;
+    for (int i = 0; i < image_bytec; i += BYTES_PER_CHAR){
+      img[insert_point] = image[i + RED_OFFSET];
+      insert_point++;
+      img[insert_point] = image[i + RED_OFFSET + 1];
+      insert_point++;
+      img[insert_point] = image[i + RED_OFFSET + 2];
+      insert_point++;
+      img[insert_point] = image[i + GREEN_OFFSET];
+      insert_point++;
+      img[insert_point] = image[i + GREEN_OFFSET + 1];
+      insert_point++;
+      img[insert_point] = image[i + GREEN_OFFSET + 2];
+      insert_point++;
+      img[insert_point] = image[i + BLUE_OFFSET];
+      insert_point++;
+      img[insert_point] = image[i + BLUE_OFFSET + 1];
+      insert_point++;
+      img[insert_point] = image[i + BLUE_OFFSET +2];
+      insert_point++;
+      char transparency[3];
+      if (
+        ASCII_TO_NUM(i + RED_OFFSET) == transparency_color[0] &&
+        ASCII_TO_NUM(i + GREEN_OFFSET) == transparency_color[1] &&
+        ASCII_TO_NUM(i + BLUE_OFFSET) == transparency_color[2]) 
+      {
+        transparency = { ‘0’, ‘0’, ‘0’ };
+      }
+      else {
+        transparency = { ‘2’, ‘5’, ‘5’ };
+      }
+      img[insert_point] = transparency[0];
+      insert_point++;
+      img[insert_point] = transparency[1];
+      insert_point++;
+      img[insert_point] = transparency[2];
+      insert_point++;
+  }
+  img[insert_point] = “\0”;
+  
+  FILE f = open(“saved_image.pcli_failsave”, “w”);
+  f.write(“FAILSAVE: %d\n”, image_width);
+  f.write(img);
+  f.close();
+  free(img);
   return SUCCESS;
 }
 
@@ -955,9 +1017,9 @@ int handle_input(char c) {
       break;
     case 26: // save
       if (save_image() == ERROR) {
-        printf("no fallback for saving!");
-        // TODO: save image fallback
-        // TODO: show error msg and quit
+        save_image_fallback();
+        perror(“Error on save! Resorted to fallback method.”);
+        exit(1);
       }
       break;
     case 27: // reload
