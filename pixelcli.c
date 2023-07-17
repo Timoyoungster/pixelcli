@@ -600,9 +600,25 @@ int load_failsave(char *path) {
     return ERROR;
   }
   
-  image_width = atoi(readline(f), 10);
-  image_height = 0;
-  // TODO: create png_bytepp for init_image
+  int w = atoi(readline(f), 10);
+  int h = atoi(readline(f), 10);
+  png_bytepp img = malloc(IMAGE_DEPTH * w * h);
+  
+  char c;
+  char num[3] = { 0, 0, 0 };
+  int inx = 0;
+  int imginx = 0;
+  while ((c = readchar(f)) != EOF) {
+    if (inx < 3) {
+      num[inx] = c;
+      inx++;
+      continue;
+    }
+    img[imginx] = atoi(num, 10);
+    imginx++;
+    inx = 0;
+  }
+  init_image(w, h, img, PNG_COLORTYPE_RGBA);
 }
 
 int load_image(char *path) {
@@ -801,7 +817,8 @@ int save_image_fallback() {
   img[insert_point] = “\0”;
   
   FILE f = open(“saved_image.pcli_failsave”, “w”);
-  f.write(“FAILSAVE: %d\n”, image_width);
+  f.write(“%d\n”, image_width);
+  f.write(“%d\n”, image_height);
   f.write(img);
   f.close();
   free(img);
