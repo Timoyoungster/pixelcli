@@ -3,19 +3,19 @@
     "title": " Todo ",
     "notes": [
       [
-        "fix todos in code",
-        "NONE"
+        "load_failsave() doesn't create the png_bytepp in a way that can be freeed",
+        "BUG"
       ],
       [
-        “change the config struct to be more space effective (char[])”,
-        “NONE”
-      ],
-      [
-        "write manpage",
+        "change the config struct to be more space effective (char[])",
         "NONE"
       ],
       [
         "zooming needs to recalc the image bounds",
+        "NONE"
+      ],
+      [
+        "write manpage",
         "NONE"
       ]
     ]

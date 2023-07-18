@@ -199,9 +199,11 @@ int get_cursor_pos(int *row, int *col) {
 int init_image(int w, int h, png_bytepp rows, int color_type) {
   // init global image vars
   // (2 * w because pixel has two chars in terminal)
-  image_bytec = w * h * BYTES_PER_CHAR;
-  image = malloc(image_bytec);
-  image_width = w;
+  // + 1 to accommodate the \0 character
+  image_bytec = (2 * w) * h * BYTES_PER_CHAR; 
+  image = malloc(image_bytec + 1);
+  image[2 * w * h * BYTES_PER_CHAR] = '\0';
+  image_width = w * 2;
   image_height = h;
 
   char r0 = (int)(transparency_color[0] / 100) + ASCII_NUMBERS_START;
@@ -229,8 +231,14 @@ int init_image(int w, int h, png_bytepp rows, int color_type) {
 
   for (int i = 0; i < image_bytec; i+=BYTES_PER_CHAR) {
     if (rows) {
+      // NOTE: I know it does it double unnecessarily
+      //       but as it just increases the loading time and
+      //       not the responsiveness whilst editing
+      //       I'm just gonna ignore that for now and might 
+      //       fix it in the future
+
       // calculate image coordinates in png struct
-      int row = (int)(((i / BYTES_PER_CHAR) / 2) / w);
+      int row = (int)((i / BYTES_PER_CHAR) / (2 * w));
       int col = (int)(((i / BYTES_PER_CHAR) / 2) % w) * IMAGE_DEPTH;
 
       // extract rgb values
@@ -278,6 +286,13 @@ int init_image(int w, int h, png_bytepp rows, int color_type) {
     image[i + 17] = b2;
     image[i + 18] = 'm';
     image[i + 19] = ' ';
+  }
+  if (rows) {
+    for (int i = 0; i < h; i++) {
+      png_bytep row = rows[i];
+      free(row);
+    }
+    free(rows);
   }
   return 0;
 }
@@ -328,10 +343,8 @@ void println(int row, int col) {
   write(STDOUT_FILENO, 
       &image[(row * image_width + col) * BYTES_PER_CHAR], 
       MIN(term.cols, image_width - col) * BYTES_PER_CHAR);
-  // set double width
-  write(STDOUT_FILENO, "\x1b#6", 3);
   // reset formatting
-  // write(STDOUT_FILENO, "\x1b[0m", 4);
+  write(STDOUT_FILENO, "\x1b[0m", 4);
 }
 
 /// prints specified lines to screen
@@ -594,35 +607,79 @@ void jmp_next_color(int cursor_row, int cursor_col, int dir) {
   free(buf);
 }
 
+static inline int readline(char **line, size_t *len, FILE *f) {
+  ssize_t read_bytes;
+  if ((read_bytes = getline(line, len, f)) <= 0) {
+    perror("empty file");
+    exit(1);
+  }
+  return read_bytes;
+}
+
 int load_failsave(char *path) {
   FILE *f = fopen(path, "rb");
   if (!f) {
     return ERROR;
   }
-  
-  int w = atoi(readline(f), 10);
-  int h = atoi(readline(f), 10);
-  png_bytepp img = malloc(IMAGE_DEPTH * w * h);
+
+  char *line = NULL;
+  unsigned long line_len;
+  long read_bytes;
+
+  // get width
+  readline(&line, &line_len, f);
+  int w = atoi(line);
+
+  // get height
+  readline(&line, &line_len, f);
+  int h = atoi(line);
+
+  png_bytepp img = malloc(h);
+  int line_bytec = w * IMAGE_DEPTH;
+  img[0] = malloc(line_bytec + 1);
   
   char c;
   char num[3] = { 0, 0, 0 };
   int inx = 0;
-  int imginx = 0;
-  while ((c = readchar(f)) != EOF) {
+  int winx = 0;
+  int hinx = 0;
+
+  while ((c = getc(f)) != EOF) {
+    num[inx] = c;
+    inx++;
     if (inx < 3) {
-      num[inx] = c;
-      inx++;
       continue;
     }
-    img[imginx] = atoi(num, 10);
-    imginx++;
+
+    img[hinx][winx] = atoi(num);
+
+    winx = (winx + 1) % (line_bytec);
+    if (winx == 0) {
+      hinx++;
+      if (hinx != h) {
+        img[hinx - 1][line_bytec] = '\0';
+        img[hinx] = malloc(line_bytec + 1);
+      }
+    }
+
     inx = 0;
   }
-  init_image(w, h, img, PNG_COLORTYPE_RGBA);
+
+  init_image(w, h, img, PNG_COLOR_TYPE_RGBA);
+
+  return SUCCESS;
 }
 
 int load_image(char *path) {
-  // TODO: if endswith pcli_failsave load_failsave
+
+  // check if path is a failsave filepath and if so load it
+  char filetype[] = ".pcli_failsave";
+  int pathlen = strlen(path);
+  int typelen = strlen(filetype);
+  if (strcmp(path + pathlen - typelen, filetype) == 0) {
+    return load_failsave(path);
+  }
+
   FILE *f = fopen(path, "rb");
   if (!f) {
     return ERROR;
@@ -775,52 +832,64 @@ int save_image() {
 }
 
 int save_image_fallback() {
-  char *img = malloc(3 * IMAGE_DEPTH * image_width * image_height + 1);
+  char *img = malloc(3 * IMAGE_DEPTH * 
+                     (image_width / 2) * image_height
+    );
   int insert_point = 0;
-    for (int i = 0; i < image_bytec; i += BYTES_PER_CHAR){
-      img[insert_point] = image[i + RED_OFFSET];
-      insert_point++;
-      img[insert_point] = image[i + RED_OFFSET + 1];
-      insert_point++;
-      img[insert_point] = image[i + RED_OFFSET + 2];
-      insert_point++;
-      img[insert_point] = image[i + GREEN_OFFSET];
-      insert_point++;
-      img[insert_point] = image[i + GREEN_OFFSET + 1];
-      insert_point++;
-      img[insert_point] = image[i + GREEN_OFFSET + 2];
-      insert_point++;
-      img[insert_point] = image[i + BLUE_OFFSET];
-      insert_point++;
-      img[insert_point] = image[i + BLUE_OFFSET + 1];
-      insert_point++;
-      img[insert_point] = image[i + BLUE_OFFSET +2];
-      insert_point++;
-      char transparency[3];
-      if (
-        ASCII_TO_NUM(i + RED_OFFSET) == transparency_color[0] &&
-        ASCII_TO_NUM(i + GREEN_OFFSET) == transparency_color[1] &&
-        ASCII_TO_NUM(i + BLUE_OFFSET) == transparency_color[2]) 
-      {
-        transparency = { ‘0’, ‘0’, ‘0’ };
-      }
-      else {
-        transparency = { ‘2’, ‘5’, ‘5’ };
-      }
-      img[insert_point] = transparency[0];
-      insert_point++;
-      img[insert_point] = transparency[1];
-      insert_point++;
-      img[insert_point] = transparency[2];
-      insert_point++;
+  for (int i = 0; i < image_bytec; i += 2 * BYTES_PER_CHAR){
+    img[insert_point] = image[i + RED_OFFSET];
+    insert_point++;
+    img[insert_point] = image[i + RED_OFFSET + 1];
+    insert_point++;
+    img[insert_point] = image[i + RED_OFFSET + 2];
+    insert_point++;
+    img[insert_point] = image[i + GREEN_OFFSET];
+    insert_point++;
+    img[insert_point] = image[i + GREEN_OFFSET + 1];
+    insert_point++;
+    img[insert_point] = image[i + GREEN_OFFSET + 2];
+    insert_point++;
+    img[insert_point] = image[i + BLUE_OFFSET];
+    insert_point++;
+    img[insert_point] = image[i + BLUE_OFFSET + 1];
+    insert_point++;
+    img[insert_point] = image[i + BLUE_OFFSET +2];
+    insert_point++;
+    char transparency[] = { '2', '5', '5' };
+    if (
+      ASCII_TO_NUM(i + RED_OFFSET) == transparency_color[0] &&
+      ASCII_TO_NUM(i + GREEN_OFFSET) == transparency_color[1] &&
+      ASCII_TO_NUM(i + BLUE_OFFSET) == transparency_color[2]) 
+    {
+      transparency[0] = '0';
+      transparency[1] = '0';
+      transparency[2] = '0';
+    }
+    img[insert_point] = transparency[0];
+    insert_point++;
+    img[insert_point] = transparency[1];
+    insert_point++;
+    img[insert_point] = transparency[2];
+    insert_point++;
   }
-  img[insert_point] = “\0”;
   
-  FILE f = open(“saved_image.pcli_failsave”, “w”);
-  f.write(“%d\n”, image_width);
-  f.write(“%d\n”, image_height);
-  f.write(img);
-  f.close();
+  FILE *f = fopen("saved_image.pcli_failsave", "w");
+
+  char *wstr = malloc(16);
+  char *hstr = malloc(16);
+  int wstr_len = sprintf(wstr, "%d\n", (image_width / 2));
+  int hstr_len = sprintf(hstr, "%d\n", image_height);
+
+  fwrite(wstr, sizeof(char), wstr_len, f);
+  fwrite(hstr, sizeof(char), hstr_len, f);
+  fwrite(
+    img, 
+    sizeof(char), 
+    3 * IMAGE_DEPTH * (image_width / 2) * image_height, 
+    f
+  );
+
+  fclose(f);
   free(img);
   return SUCCESS;
 }
@@ -1033,10 +1102,10 @@ int handle_input(char c) {
       b_sel = color_palette[9][2];
       break;
     case 26: // save
-      if (save_image() == ERROR) {
+      if (1 || save_image() == ERROR) {
         save_image_fallback();
-        perror(“Error on save! Resorted to fallback method.”);
-        exit(1);
+        perror("Error on save! Resorted to fallback method.");
+        return ERROR;
       }
       break;
     case 27: // reload
