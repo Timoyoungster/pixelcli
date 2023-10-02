@@ -1111,7 +1111,8 @@ int handle_input(char c) {
     case 27: // reload
       // BUG: doesn't do anything for some reason
       set_terminal_size(); // recalc terminal size
-      break;
+      clear_screen();
+      print_screen();
     case 28: // pipette
       pipette(row + y_offset, col + x_offset);
       break;
